@@ -1,0 +1,19 @@
+{
+  "name": "beezi-copilot",
+  "owner": { "name": "Beezi" },
+  "metadata": {
+    "description": "Beezi's GitHub Copilot plugin marketplace."
+  },
+  "plugins": [
+    {
+      "name": "beezi",
+      "source": "./plugins/beezi",
+      "description": "Reports GitHub Copilot session token and AI-credit analytics to Beezi, attributed to repo and branch, and adds the Beezi MCP tools.",
+      "version": "0.5.2",
+      "author": { "name": "Beezi" },
+      "license": "Apache-2.0",
+      "keywords": ["analytics", "token-usage", "beezi", "telemetry", "copilot"],
+      "category": "analytics"
+    }
+  ]
+}
