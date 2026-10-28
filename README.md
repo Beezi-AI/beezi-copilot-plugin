@@ -5,14 +5,15 @@ branch without leaving the conversation.
 
 | Plugin | Platform | What you get |
 | --- | --- | --- |
-| `beezi` | Copilot CLI, VS Code (Copilot Agent Host) | Automatic session analytics per repository and branch |
+| `beezi` | Copilot CLI, the Copilot app, VS Code (Copilot Agent Host and Local chat) | Automatic session analytics per repository and branch |
 
 The plugin signs in with your own Beezi account — you must already be a Beezi user, and
 everything happens as you, on your tenant.
 
 ## GitHub Copilot — `beezi`
 
-Requires Node.js on your `PATH`: the plugin's hooks and MCP server run `node`.
+Requires Node.js on the `PATH` Copilot uses: the plugin's hooks and MCP server run `node`. Node.js 22.13 or
+later gives per-call token detail; older versions (13.2 and up) report session totals.
 
 ### 1. Install
 
@@ -37,10 +38,11 @@ automatically; you don't need to run anything else.
 | Command | Purpose |
 | --- | --- |
 | `/beezi-login` | Link this machine via browser sign-in; run it again to link another account. |
-| `/beezi-status` | Show which Beezi accounts are linked here, and whether capture is working. |
+| `/beezi-status` | Show which Beezi accounts are linked here, where this folder's analytics go, whether capture is working, and how to update. |
 | `/beezi-logout` | Unlink one account, or all of them — revokes access and removes the stored credentials. |
 | `/beezi-sync` | Upload past Copilot sessions Beezi doesn't have yet; safe to repeat. |
-| `/beezi-settings` | Routing rules per repo or folder, default account and Copilot plan, crash reports, status line. |
+| `/beezi-settings` | Routing rules per repo or folder (with undo), default account and Copilot plan, crash reports, status line and its Beezi badge. |
+| `/beezi-release-notes` | What changed in the installed version; `all` for every release, or name one version. |
 
 Skills are prefixed `beezi-` because Copilot already has `/login`, `/logout` and `/settings`.
 
@@ -57,13 +59,14 @@ copilot plugin marketplace update beezi-copilot
 copilot plugin update beezi
 ```
 
-Then start a new Copilot session.
+In the Copilot app: Customize → Plugins → Update. Then restart Copilot to apply it.
+`/beezi-release-notes` shows what changed.
 
 ### Optional configuration
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `BEEZI_API_URL` | `https://beezi-api-prod.azurewebsites.net/api` | Beezi API base URL. |
+| `BEEZI_API_URL` | `https://api.beezi.ai/api` | Beezi API base URL. |
 | `BEEZI_MCP_URL` | `<BEEZI_API_URL>/mcp` | Beezi MCP server backing `/beezi-analytics`. |
 | `BEEZI_COPILOT_HOME` | `~/.beezi-copilot` | Local state root (queue, cursors, credentials). |
 
