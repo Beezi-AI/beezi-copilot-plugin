@@ -51,15 +51,63 @@ GitHub account works for.
 **Sent when a turn fails:** the error class, type, code and status, when it happened, and Copilot's
 error message (cut to 1000 characters).
 
+**Sent to a workspace that hides details:** a Beezi workspace chooses which of five kinds of detail it
+hides, each on its own. For each kind it hides, its session reports, quota rows and account records
+carry a made-up value in place of the original:
+
+| Kind | What is hidden |
+|---|---|
+| Folders and repositories | the `origin` remote (or local folder name) |
+| Branches | the branch |
+| Sessions | the session name; the agent name is left out, and a failed turn is sent without Copilot's error message or its error details |
+| Computer names | this machine's host name in the `X-Beezi-Host` header |
+| Accounts | the GitHub account on session reports, quota rows and account records, plus whether the account is on github.com (yes/no, never the host: `account_is_github_com` on reports, `accountIsGithubCom` on the account check-in) so GitHub sign-in still works |
+
+Each made-up value is `anon:<kind>:` and 32 hex characters, derived from the original with that
+workspace's own key, so the same repo, branch or machine always gets the same value there. A report
+keeps hidden every kind its workspace hid when the report was queued or hides when it is sent. If
+this machine has not yet received the workspace's key, a report that should hide something is not
+sent at all, and the host name header is left out. The paths of project instructions files are sent
+unchanged. The first session start in such a workspace says that its sessions are anonymized, once,
+and `/beezi-settings account` shows the name this machine appears as there.
+
+**Past sessions are uploaded only after you say yes, unless the workspace's owner chose upload without
+asking.** Sessions that started before you linked this
+machine to a workspace (or before you joined it) are past sessions, except one you continue after
+linking, which is tracked live from then on. `/beezi-login` and the terminal setup first show a
+summary of the past sessions they found: how many, from which dates and folders, what each one sends and
+which details each workspace hides. Then they ask one question: what to track. Your answer is the yes:
+right after it, the past sessions that summary listed, from the repos and folders you chose to track,
+upload in the background, hiding the details the workspace hides when they are sent, even if its owner
+changed that after the summary. If Beezi can't confirm what the workspace hides right then, it sends
+nothing and tries again later. A
+workspace whose owner chose never to upload past sessions gets none. Later, a new session or
+`/beezi-sync` shows the same kind of summary for past sessions not uploaded yet and uploads them only
+after you answer "Upload now". "Not now" uploads nothing and is remembered until the workspace's owner
+changes the past-sessions setting. When the owner chose upload without asking, the summary is a notice
+that says so, and the upload starts with no question. A new
+session asks only when the workspace offers past sessions; `/beezi-sync` always asks, except for a
+workspace whose owner chose upload without asking, which gets the notice and the upload. `/beezi-sync`
+still asks that workspace first when you said "Not now" to some of its sessions under the owner's
+current setting, or when you ask it to sync to specific workspaces. A rule that sends a folder to a
+workspace can bring the question back for that folder's sessions, or, when the workspace's owner chose
+upload without asking, the notice and the upload. Sessions after the link are sent as they happen.
+
+Every authenticated request this plugin makes to Beezi carries the header `x-beezi-history-consent: ask-first`, so
+Beezi knows this plugin asks before uploading past sessions, unless the workspace's owner chose upload
+without asking.
+
 **Never sent:** your prompts (apart from the session-name fallback above), your code, file contents,
 tool arguments, command text and tool results, and your GitHub or Copilot tokens. Your Beezi sign-in
 is kept in your operating system's secret store when there is one, and otherwise in a file only your
 user account can read.
 
-**Crash reports** are off unless you turn them on in `/beezi-settings`. They carry the plugin, Copilot
+**Crash reports** are turned on by `/beezi-login` and the terminal setup, unless you already turned
+them on or off on this machine; `/beezi-settings` changes them. They carry the plugin, Copilot
 and Node versions, your OS, OS version and CPU type, the plugin file and line that failed, the error's
-name, code and HTTP status, your sign-in state, and how many times and when it happened. If you choose
-"Correlate", a random installation ID also ties them to your Beezi account. They never carry your code,
+name, code and HTTP status, your sign-in state, and how many times and when it happened. The setup turns
+them on with "Correlate", so a random installation ID also ties them to your Beezi account; "Anonymous"
+in `/beezi-settings` leaves it out. They never carry your code,
 prompts, repository names or any path outside the plugin.
 
 ## Package layout
@@ -94,8 +142,8 @@ the same text in `hookSpecificOutput.additionalContext` for VS Code.
 
 | Event | Script | Work |
 |---|---|---|
-| `SessionStart` | `session-start.mjs` | link check, notices, workspace question, queue flush, prune, billing reconcile, account check-in, update check |
-| `SessionStart` (detached) | `history-worker.mjs` | sends past sessions to a workspace that a rule or the New folders default newly reaches; rule changes, `/beezi-sync`, the login upload and the watcher start it too |
+| `SessionStart` | `session-start.mjs` | link check, notices, workspace question, queue flush, prune, billing reconcile, account check-in, update check, past-sessions question (attended sessions), privacy notice |
+| `SessionStart` (detached) | `history-worker.mjs` | uploads past sessions only after you answered Upload to the summary, answered the setup's tracking question, or got the notice for a workspace whose owner chose upload without asking; `accept` and the setup start it, and session start and the watcher retry it |
 | `SessionStart` (detached) | `catch-up-worker.mjs` | checkpoints up to 3 recent sessions whose file grew past what was reported or whose final shutdown is still owed; one per machine at a time |
 | `UserPromptSubmit` | `track-prompt.mjs` | records the interaction mode; asks for a background quota refresh when one is due |
 | `PostToolUse` (shell) | `checkpoint.mjs` | checkpoint after `git commit`, `switch`, `checkout`, `merge`, `rebase` or `pull` (also with `-C <dir>`) and `gh pr checkout` |
@@ -122,10 +170,10 @@ the tool list, a call to one is refused locally, and the bridge replaces the ser
 
 | Skill | Runs |
 |---|---|
-| `beezi-login` | `preflight.mjs`, `login.mjs`, `workspace.mjs`, `billing-capture.mjs`, `accounts.mjs`, `backfill.mjs` |
+| `beezi-login` | `preflight.mjs`, `login-flow.mjs` (which runs `login.mjs`, `billing-capture.mjs`, `workspace.mjs setup`, `history-offer.mjs`, `telemetry.mjs`, `settings.mjs` and `statusline-install.mjs`), and `login.mjs` for a sign-in without the browser |
 | `beezi-logout` | `preflight.mjs`, `logout.mjs` |
 | `beezi-settings` | `preflight.mjs`, `settings.mjs`, `workspace.mjs`, `accounts.mjs`, `billing-capture.mjs`, `telemetry.mjs`, `statusline-install.mjs` |
-| `beezi-sync` | `preflight.mjs`, `accounts.mjs`, `workspace.mjs routes`, `sync.mjs` |
+| `beezi-sync` | `preflight.mjs`, `accounts.mjs`, `workspace.mjs routes`, `sync.mjs`, `history-offer.mjs` |
 | `beezi-status` | `settings.mjs status`, or the `beezi_status` MCP tool |
 | `beezi-release-notes` | `release-notes.mjs` |
 | `beezi-analytics` | the MCP tools `get_analytics_instructions` and `get_my_usage_summary` (plus `workspace.mjs read` when a workspace is named) |
@@ -134,9 +182,11 @@ The interactive skills call `preflight.mjs` first and refuse to continue in auto
 auto-answered question can never create a routing rule or grant consent.
 
 **Terminal setup.** The one-line installers run `setup.mjs` once, right after the install, in the same
-terminal: the `beezi-login` steps (minus the current session's folder rule; there is no session), then crash
-reports and the status line. It runs `preflight.mjs`, `accounts.mjs`, `login.mjs`, `workspace.mjs`,
-`billing-capture.mjs`, `backfill.mjs`, `settings.mjs`, `telemetry.mjs` and `statusline-install.mjs` as child
+terminal, with the same steps as `/beezi-login`: it uses the account already linked or signs in, reads the
+Copilot plan without asking, and asks one question, what to track. After the answer it uploads the chosen
+past sessions in the background, turns on crash reports and the status line unless you already decided,
+and ends with what is on. It runs `preflight.mjs`, `accounts.mjs`, `login.mjs`, `settings.mjs`,
+`billing-capture.mjs`, `workspace.mjs`, `history-offer.mjs`, `telemetry.mjs` and `statusline-install.mjs` as child
 processes. Where no browser can open (SSH, a Codespace, a dev container, Linux with no display) it signs in
 with the paste-back flow: `login.mjs --no-browser`, then `--complete` with the pasted address. The child
 processes run without `COPILOT_GITHUB_TOKEN` and `GITHUB_TOKEN`, which Copilot keeps out of its hooks, so setup
@@ -165,13 +215,14 @@ file that changed it does one of three things:
 - **Active session it has not seen before:** it establishes a start line from what Beezi already
   holds (the same rule `/beezi-sync` uses) and then checkpoints. Every hook-less Agent Host session
   lands here.
-- **Idle session it has not seen before:** it counts as history and goes through the sync path, for
-  each workspace only once that workspace's past sessions were sent: the login import finished, or a
-  `/beezi-sync` or history-worker run covered it. The watcher never performs the one-time import.
-  When a workspace still owes its past sessions, the watcher starts the history worker for it (see
-  [Accounts and workspace routing](#accounts-and-workspace-routing)) instead of uploading them itself.
+- **Idle session it has not seen before:** it counts as history and goes through the sync path. For
+  each workspace it sends only sessions that started after that workspace's link (the later of link
+  and join), and never sessions from before it. A session written last before a workspace's link is
+  not sent to that workspace by the watcher. Past sessions arrive only through an accepted question,
+  or with a notice when the workspace's owner chose upload without asking (see
+  [What this plugin sends](#what-this-plugin-sends)).
 
-Files over 64 MB are skipped and logged once. Once every 6 hours the elected watcher also runs the
+Once every 6 hours the elected watcher also runs the
 housekeeping that `SessionStart` runs (prune, billing reconcile, account check-in, queue flush), so
 those still happen where `SessionStart` never fires. It writes its notes to
 `<data root>/logs/watcher.log` and never to stdout or stderr, because stdout belongs to JSON-RPC.
@@ -293,7 +344,7 @@ window keeps its chat sessions is unverified). Cursor and Windsurf are not read.
 
   | Source | Read from |
   |---|---|
-  | A plan you declared | `/beezi-login` or `/beezi-settings refresh`, for one GitHub account; a newer observed plan replaces it |
+  | A plan you declared | `/beezi-settings refresh`, for one GitHub account; a newer observed plan replaces it |
   | The Copilot runtime | its account answer from the quota probe below, else its own user cache |
   | VS Code | the Copilot entitlement VS Code stored for the newest signed-in launch, else the plan sku Copilot Chat logged |
 
@@ -303,7 +354,7 @@ window keeps its chat sessions is unverified). Cursor and Windsurf are not read.
   environment variable (`COPILOT_GITHUB_TOKEN`, `GH_TOKEN`, `GITHUB_TOKEN`) overrides only the CLI's.
   `billing.json` keeps an observed and a declared plan per GitHub account, so a VS Code session bound
   to its own account gets that account's plan whatever the CLI is signed in as. When VS Code's account
-  differs from the CLI's and has no plan, `/beezi-login` and `/beezi-settings refresh` ask for it
+  differs from the CLI's and has no plan, `/beezi-settings refresh` asks for it
   separately (`billing-capture.mjs --plan <plan> --github <host/login>`).
 - **The account** on a report is `account_uuid`, the lowercase GitHub identity `<host>/<login>`, up to
   64 characters. No email is sent. The account a session ran under is found in this order:
@@ -317,7 +368,7 @@ window keeps its chat sessions is unverified). Cursor and Windsurf are not read.
   When none of these names an account and this machine knows only one GitHub account, that account
   is used. When it knows several (Copilot CLI logins, Copilot app accounts, VS Code's sign-in), the
   report carries no account rather than a guess. The same order applies in live capture,
-  `/beezi-sync` and the login upload.
+  `/beezi-sync` and the accepted past-sessions upload.
 - **Monthly quota.** A detached worker asks the Copilot runtime (`copilot --headless --stdio`,
   `account.getQuota` and `account.getCurrentAuth`) for the monthly premium-request quota at most every
   15 minutes, behind a lock and a failure backoff, and posts it to `/me/copilot/usage` as
@@ -334,7 +385,7 @@ Reports use the Claude plugin's `POST /sessions/report` shape plus these optiona
 `project_instructions_status`, `project_instructions_files`, `cold_prefix_calls`,
 `cold_prefix_ai_credits_nano`, `model_switches`, `idle_cold_calls`, `compactions`, `operations.failures`,
 `time_to_first_token_ms`, `duration_ms`, `turn_aborted`, `model_context_window`, `originator`,
-`cli_version` and `source` (`cli`, `app`, `vscode` or `vscode-agent-host`).
+`cli_version`, `source` (`cli`, `app`, `vscode` or `vscode-agent-host`) and `account_is_github_com`.
 
 The Beezi API validates reports against a strict whitelist, so **one unknown field rejects the whole
 report**. A field ships in the plugin only after the API change that accepts it is deployed to every
@@ -354,15 +405,15 @@ analytics: **rules** for specific repos and folders, and a **New folders** defau
 table starts with a Default row, marks the row that applies to this folder "← you're here", and lists each
 rule's path or remote and its sessions over the last 30 days. A rule or New folders change made there ends
 with "Undo: /beezi-settings undo", which puts the last change back. `/beezi-login` and the terminal setup ask
-one question, "Where should analytics from this machine go?", and a session in a repo or folder with no
+one question, "Where should they go?": everything to one workspace or to several, or "Let me choose", which
+ticks the repos and folders for each workspace; after "Let me choose", a session in a repo or folder with no
 rule yet asks where that place's analytics go. On the Copilot CLI the status line can end with a Beezi
 badge naming where this folder's analytics go; it is off until `/beezi-settings statusline badge on`.
 Analytics held for an unanswered question wait on disk and are sent once you answer.
 
-When a rule or the New folders default starts sending to a workspace it did not reach before, a
-detached history worker (`history-worker.mjs`) sends that workspace this machine's past sessions,
-skipping what it already holds. If it cannot finish, the next session start or the watcher tries
-again. A later session start tells you in one line how it went.
+Changing a rule or the New folders default can make the next session start ask again, about that
+folder's sessions only. A workspace whose owner chose upload without asking gets a notice and the upload
+instead.
 
 ## Data root
 
@@ -393,8 +444,10 @@ has its own credentials.
 ## Client identity
 
 Every request carries `X-Beezi-Agent: copilot`, `X-Beezi-Host`, `X-Beezi-Client`, the plugin version
-header and, for an account in several workspaces, `X-Beezi-Tenant`. The OAuth client registers as
-`Beezi Copilot plugin — <hostname>`. Copilot-specific routes are `/me/copilot/whoami`,
+header and, for an account in several workspaces, `X-Beezi-Tenant`. An anonymized workspace receives
+`X-Beezi-Host` as a hashed value once this machine has its key; the first request of a login, made
+before the workspace is known, carries the host name. The OAuth client registers as
+`Beezi Copilot plugin`. Copilot-specific routes are `/me/copilot/whoami`,
 `/me/copilot/machine` and `/me/copilot/usage`; the rest (`/sessions/*`,
 `/me/cli-agent/account`, `/cli-agent/plugin-diagnostics/*`) are shared with the other agents and read
 the vendor from the header.

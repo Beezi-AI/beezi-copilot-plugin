@@ -1,5 +1,71 @@
 # Beezi plugin release notes
 
+## 0.4.3 (2026-11-18) — Past sessions follow the owner's settings
+
+### Improved
+- **Uploads hide what the workspace hides now** — past sessions you agreed to upload are sent with the details the workspace's owner hides at the time they are sent. A detail the owner stopped hiding after you agreed is sent as it is. When Beezi can't confirm the workspace's settings at that moment, it sends nothing and tries again later. The question also shows what the workspace hides right now.
+- **Audit workspaces follow the owner's choice** — an audit workspace whose owner chose upload without asking now uploads past sessions with a notice instead of a question, like any other workspace.
+
+## 0.4.2 (2026-11-18) — Upload progress
+
+### New
+- **Upload progress in setup** — terminal setup and the one-line installers show a bar that fills in place while your past sessions upload, `Uploading past sessions to Acme  ▓▓▓▓░░░░░░░░░░  30/100`, then `✓ 100 past sessions uploaded to Acme`. Off a terminal you get plain `Beezi: 30/100 sessions read…` lines instead. Press Ctrl+C, or wait 100 seconds off a terminal, to stop following; an upload that is stopped or fails ends on `Beezi: the rest keeps uploading in the background`, and the rest keeps uploading.
+- **Upload now shows its progress** — `Upload now` in a session follows the upload for up to 100 seconds with the same plain lines and ends on the done line, or on `✓ 30 of 100 past sessions uploaded to Acme; the rest keeps uploading in the background`.
+
+### Improved
+- **A finished upload is not announced twice** — once you have seen the done line, the next session start no longer repeats the result. Uploads that start by themselves still report their result at the next session start.
+
+## 0.4.1 (2026-11-17) — Setup and past-session checks wait out a busy moment
+
+### Fixed
+- **Setup waits for a busy Beezi job** — setup no longer gives up on your past sessions when another Beezi job is briefly busy. It tries again for up to a minute.
+- **Past sessions are checked again within minutes** — when another Beezi job was busy, the background check of past sessions now tries again in minutes, not hours.
+
+## 0.4.0 (2026-11-11) — One-question setup
+
+### New
+- **One question at setup** — after you sign in, the terminal setup and `/beezi-login` ask one thing: what Beezi should track. "Everything" tracks every repo and folder, new ones included; "Let me choose" lets you tick the repos and folders, per workspace when you have several. With no past sessions and one workspace, nothing is asked.
+- **Past sessions follow your answer** — the past sessions in the repos and folders you track start uploading in the background right after you answer, without a second question. Places you leave out are never uploaded, and a workspace whose owner chose never to upload past sessions is still skipped.
+
+### Improved
+- **Your plan is found, not asked** — setup and `/beezi-login` read your Copilot plan silently and say which one they found. When they can't tell, they say so and `/beezi-settings` sets it.
+- **Crash reports and the status line on by default** — setup turns on crash reports unless you already chose, and installs the status line when it is off. Both stay changeable in `/beezi-settings`.
+- **Fewer questions at sign-in** — `/beezi-login` no longer asks about this session's folder, the default account, workspaces you joined or repos with no rule. `/beezi-settings` and `/beezi-sync` still cover them.
+- **Beezi's colours in the terminal** — the terminal setup shows the Beezi mark and violet highlights, and ends with a short closing block.
+
+## 0.3.0 (2026-11-03) — Past sessions that upload without asking
+
+### New
+- **Uploads without asking** — a workspace owner can choose to upload past sessions without asking. Beezi still shows the summary, says that workspace uploads past sessions without asking, and uploads them in the background: at sign-in, during setup, when a new session starts and from `/beezi-sync`.
+
+### Improved
+- **One summary for several workspaces** — when several of your workspaces have past sessions, Beezi shows one summary with each workspace, its number of sessions and what it hides, then asks one question for the workspaces that ask first: "Upload to both" (or "Upload to all 3", and so on), "Choose for each" or "Not now".
+
+## 0.2.1 (2026-10-30) — A clearer past-sessions summary
+
+### Improved
+- **Past-sessions summary as a checklist** — the summary now lists what is sent, what your workspace hides and what is never sent, each on its own short line. The question offers "Upload now" or "Not now", and the terminal setup asks it as an arrow-key menu.
+
+## 0.2.0 (2026-10-30) — Anonymized workspaces and past sessions on your say-so
+
+### New
+- **Choose what each workspace hides** — a Beezi workspace can hide repos, branches, session names, your computer name and your GitHub account, each on its own. Hidden details arrive as made-up values, and hiding session names also leaves out the agent name and error messages.
+- **Past sessions after you say yes** — Beezi shows how many past sessions it found, from when and where, and what uploading them sends, then uploads them after you choose "Upload". You can be asked at sign-in, during setup, when a new session starts or from `/beezi-sync`. Since 0.3.0 a workspace can also upload them without asking.
+- **Privacy notice** — the first session start in an anonymized workspace says that its sessions are anonymized, once per account and workspace.
+- **Appears as** — `/beezi-settings account` shows the name this machine appears as in an anonymized workspace.
+
+### Improved
+- **Rule changes upload nothing by themselves** — adding or changing a folder rule uploads no past sessions by itself. Beezi asks again about that folder's past sessions; a workspace whose owner chose upload without asking gets a notice and the upload instead.
+- **"Not now" is remembered** — Beezi doesn't ask that workspace again until its owner changes the past-sessions setting. Run `/beezi-sync` any time to upload them.
+- **Hidden details stay hidden** — a detail the question said was hidden is hidden in that upload even if the setting changes before it runs.
+- **Declined sessions** — sessions you said Not now to are not asked about again until the workspace's choice changes; `/beezi-sync` still shows them.
+- **GitHub sign-in in hidden workspaces** — when GitHub logins are hidden, Beezi also sends whether the account is on github.com.
+
+## 0.1.96 (2026-10-29) — Large sessions keep tracking
+
+### Fixed
+- **Large sessions keep tracking** — Copilot CLI and VS Code sessions over 64 MB are tracked live and uploaded instead of being skipped.
+
 ## 0.1.95 (2026-10-26) — Terminal setup sees what your sessions see
 
 ### Fixed

@@ -9,10 +9,20 @@
       "name": "beezi",
       "source": "./plugins/beezi",
       "description": "Reports GitHub Copilot session token and AI-credit analytics to Beezi, attributed to repo and branch, and adds the Beezi MCP tools.",
-      "version": "0.1.95",
+      "version": "0.4.3",
       "author": { "name": "Beezi" },
       "license": "Apache-2.0",
       "keywords": ["analytics", "token-usage", "beezi", "telemetry", "copilot"],
+      "category": "analytics"
+    },
+    {
+      "name": "beezi-analytics",
+      "source": "./plugins/beezi-analytics",
+      "description": "See your Beezi usage analytics in GitHub Copilot: spend, sessions, status and recommendations for the last 7 or 30 days. Read-only; sign in with your Beezi account.",
+      "version": "0.1.2",
+      "author": { "name": "Beezi" },
+      "license": "Apache-2.0",
+      "keywords": ["analytics", "token-usage", "beezi", "copilot"],
       "category": "analytics"
     }
   ]

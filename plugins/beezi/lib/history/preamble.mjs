@@ -1,4 +1,4 @@
-// The gates before a history run reads any session: account and auth, audit-only workspaces, the queue drain and the seal.
+// The gates before a history run reads any session: account and auth, audit-only workspaces, the queue drain and the sealed-pull check.
 import { INTERACTIVE_REFRESH_WAIT_MS } from '../auth/token.mjs';
 import { pinnedTo } from '../auth/recipients.mjs';
 import { apiBase } from '../config/api.mjs';
@@ -7,6 +7,7 @@ import { AUTH_STATES } from '../contract/auth-states.mjs';
 import { isMultiTenant } from '../workspace/tenants.mjs';
 import { matchesIdentity, isLiveTrackingAllowed, isTenantDark, TrackingMode } from '../state/tracking.mjs';
 import { isComplete } from '../state/ledger.mjs';
+import { anonymizationFor, withAnonymization } from '../core/anon-target.mjs';
 
 const finishAuditOnly = (result) => {
   result.ok = true;
@@ -30,12 +31,13 @@ const finishNotDrained = (result, lastError) => {
 export async function runPreamble(run) {
   if (!(await authenticate(run))) return false;
   // Step 3: the repair pass must not become a way around an audit-only workspace.
-  const { result, syncMode, multi, tracking, trackingValid, tenantId } = run;
+  const { result, syncMode, dryRun, multi, tracking, trackingValid, tenantId } = run;
   if (syncMode && trackingValid && (multi ? isTenantDark(tracking, tenantId) : !isLiveTrackingAllowed(tracking))) {
     finishAuditOnly(result);
     return false;
   }
-  if (syncMode && !(await drainQueue(run))) return false;
+  // Only a live (not dry-run) sync drains the queue.
+  if (syncMode && !dryRun && !(await drainQueue(run))) return false;
   return checkSeal(run);
 }
 
@@ -69,6 +71,7 @@ async function authenticate(run) {
   run.multi = multi;
   // Each workspace of a multi-workspace account keeps its own ledger and coverage record, so one import never blocks the rest.
   run.ledgerTenant = multi ? tenantId : null;
+  // The drain and whoami go under the row's block; a past-session upload then takes whoami's block (checkSeal, R5).
   run.session = { ...session, tenantId };
   run.identity = run.session.clientId == null ? null : run.session.clientId;
   run.tracking = run.io.readTracking(key);
@@ -126,10 +129,22 @@ async function checkSeal(run) {
       return false;
     }
   }
+  if (options.freshAnonymization === true && !followFreshBlock(run, who)) return false;
   run.ledger = run.io.loadLedger(key, run.identity, run.ledgerTenant);
   if (!syncMode && !options.force && isComplete(run.ledger)) {
     finishAlreadyCompleted(result, false);
     return false;
   }
+  return true;
+}
+
+// A past-session upload hashes with this run's whoami block for its workspace; no valid answer or no block sends nothing (R5).
+function followFreshBlock(run, who) {
+  const block = who != null && who.valid === true ? anonymizationFor(who, run.tenantId) : null;
+  if (block == null) {
+    run.result.reason = 'anonymization-unconfirmed';
+    return false;
+  }
+  run.session = withAnonymization(run.session, run.tenantId, block);
   return true;
 }

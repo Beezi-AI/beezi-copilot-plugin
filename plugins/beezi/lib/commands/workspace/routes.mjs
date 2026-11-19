@@ -7,13 +7,21 @@ import { isLineSafePlace } from '../../workspace/rule-model.mjs';
 import { planUnruledRoutes } from '../../history/history-routing.mjs';
 import { listSessionFiles } from '../../sources/cli/session-files.mjs';
 import { UserError } from '../../core/errors.mjs';
-import { commandLine, deferSuffix, routeLine, routesHeaderLine, ruleAddCommandLine, workspaceLines } from '../../ux/workspace-lines.mjs';
+import { commandLine, routeLine, routesHeaderLine, ruleAddCommandLine, workspaceLines } from '../../ux/workspace-lines.mjs';
 import { machineLine } from '../../ux/machine-lines.mjs';
 import { resolveSession } from '../../workspace/session-routes.mjs';
 import { USAGE, pastSessionOptions, parseSessionFlag, selectedRows } from './args.mjs';
 
+export function printNoFolder(lost) {
+  if (lost > 0) {
+    console.log(lost === 1
+      ? '1 other past session has no recorded folder and is not sent.'
+      : `${lost} other past sessions have no recorded folder and are not sent.`);
+  }
+}
+
 // Returns how many P lines it printed.
-export async function routes(argv, cx = { deferUpload: false }) {
+export async function routes(argv) {
   const { session, rest: afterSession } = parseSessionFlag(argv);
   const { account, rest } = await parseAccountFlag(afterSession);
   if (rest.length !== 0) throw new UserError(USAGE);
@@ -34,16 +42,11 @@ export async function routes(argv, cx = { deferUpload: false }) {
       for (const g of groups) {
         total += 1;
         console.log(routeLine(total, row, g));
-        console.log(ruleAddCommandLine(`P${total}-command`, g, row, cx.deferUpload));
+        console.log(ruleAddCommandLine(`P${total}-command`, g, row));
       }
-      console.log(commandLine('all-command', `rule add-all --account ${row.key}${deferSuffix(cx.deferUpload)} <tenants>`));
+      console.log(commandLine('all-command', `rule add-all --account ${row.key} <tenants>`));
     }
-    const lost = planned.noDirectory;
-    if (lost > 0) {
-      console.log(lost === 1
-        ? '1 other past session has no recorded folder and is not sent.'
-        : `${lost} other past sessions have no recorded folder and are not sent.`);
-    }
+    printNoFolder(planned.noDirectory);
   }
   console.log(machineLine([['routes', total]]));
   return total;

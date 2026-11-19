@@ -1,23 +1,24 @@
-// The terminal setup's entry: the terminal, the prompt and the runner, then the wizard and the finale or the stop line.
+// The terminal setup's entry: the header, the terminal, the prompt and the runner, then the wizard or the stop line.
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { friendlyMessage } from '../../core/errors.mjs';
 import { copilotAuthEnv } from '../../sources/cli/copilot-identity.mjs';
-import { finaleLines } from '../../ux/setup/finale.mjs';
-import { canReadKeys, colorEnabled, createStyle, formatLine, paint } from '../../ux/setup/style.mjs';
+import { headerLines } from '../../ux/setup/finale.mjs';
+import { canReadKeys, formatLine, paint, terminalStyle } from '../../ux/setup/style.mjs';
 import { createPrompt, openTerminal } from './prompt.mjs';
 import { createRunner } from './runner.mjs';
 import { runSetup } from './wizard.mjs';
 
 // Copilot's session id: removed from the children's environment, so no script binds this run to a session.
 export const SESSION_KEYS = ['COPILOT_AGENT_SESSION_ID'];
-export const NO_TERMINAL = '✗ Beezi setup needs a terminal. Run /beezi-login in Copilot instead.';
-export const STOPPED = 'Setup stopped. Run the installer again, or /beezi-login in Copilot, to finish.';
+export const NO_TERMINAL = '✗ Beezi setup needs a terminal. Run /beezi-login in GitHub Copilot instead.';
+export const STOPPED = 'Setup stopped. Run /beezi-login in GitHub Copilot to finish.';
 // Copilot keeps these out of its hooks' environment (GH_TOKEN still reaches them), so the steps run without them too.
 export const HIDDEN_TOKEN_VARS = ['COPILOT_GITHUB_TOKEN', 'GITHUB_TOKEN'];
-const AGENT = 'GitHub Copilot';
 const SHOW_CURSOR = '\x1b[?25h';
+const CLEAR_LINE = '\r\x1b[2K';
+const MARGIN = '  ';
 
 export function realDeps(root) {
   return {
@@ -25,7 +26,6 @@ export function realDeps(root) {
     env: process.env,
     platform: process.platform,
     output: process.stdout,
-    random: Math.random,
     openTerminal,
     createPrompt,
     createRunner,
@@ -55,13 +55,19 @@ function hookVisibleEnv(env) {
   return out;
 }
 
-// Runs the wizard on the terminal and resolves its exit code.
+// Each non-empty \n-separated part starts at the setup's left margin.
+function indent(line) {
+  return String(line).split('\n').map((part) => (part === '' ? part : MARGIN + part)).join('\n');
+}
+
+// Runs the wizard on the terminal and resolves its exit code; the header is left to the installer when it ran the setup.
 export function setupMain(deps) {
   const output = deps.output;
-  const style = createStyle({ enabled: colorEnabled({ stream: output, env: deps.env }) });
+  const style = terminalStyle({ stream: output, env: deps.env });
   // Wrapped to the width on a terminal; a log keeps each line whole.
-  const format = (line) => (output.isTTY ? formatLine(style, line, output.columns || 80) : paint(style, line));
+  const format = (line) => (output.isTTY ? formatLine(style, indent(line), output.columns || 80) : paint(style, indent(line)));
   const print = (line) => { output.write(`${format(line)}\n`); };
+  if (deps.env.BEEZI_INSTALLER !== '1') headerLines(style).forEach((line) => { output.write(`${line}\n`); });
   const input = deps.openTerminal();
   if (input === null) {
     print(NO_TERMINAL);
@@ -69,6 +75,7 @@ export function setupMain(deps) {
   }
   let run = null;
   let ask = null;
+  let following = null;
   let done;
   // A synchronous throw from here on ends in the same stop line as a rejected wizard.
   try {
@@ -77,7 +84,12 @@ export function setupMain(deps) {
     // Shows the cursor again on process exit.
     if (output.isTTY) deps.onExit(() => { output.write(SHOW_CURSOR); });
     // Shared by SIGINT and Ctrl+C inside an arrow-key menu; a drawn activity line is cleared first.
+    // While an upload is followed, Ctrl+C ends only the following.
     const stop = () => {
+      if (following !== null) {
+        following.stopped = true;
+        return;
+      }
       if (run !== null) run.clearActivity();
       print('');
       print(STOPPED);
@@ -85,13 +97,26 @@ export function setupMain(deps) {
     };
     deps.onInterrupt(stop);
     const interactive = canReadKeys({ input, output, env: deps.env });
-    ask = deps.createPrompt({ input, output, style, interactive, onInterrupt: stop });
+    ask = deps.createPrompt({ input, output, style, interactive, onInterrupt: stop, format });
+    const activity = output.isTTY === true && deps.env.TERM !== 'dumb';
     run = deps.createRunner({
       root: deps.root, cwd, env: hookVisibleEnv(deps.env), sessionKeys: SESSION_KEYS, paint: format,
-      output, activity: output.isTTY === true && deps.env.TERM !== 'dumb',
+      output, activity, margin: MARGIN, accent: style.accent,
     });
+    // Redraws one line in place, never wrapped: CLEAR_LINE clears only the last row, so the caller cuts it to drawColumns.
+    const draw = (line) => { output.write(`${CLEAR_LINE}${paint(style, indent(line))}`); };
+    // The line's room after the margin, one short of the width so the cursor never wraps.
+    const drawColumns = (output.columns || 80) - 1 - MARGIN.length;
+    // Runs task(shouldStop) with Ctrl+C setting shouldStop instead of stopping the setup.
+    const whileFollowing = (task) => {
+      const flag = { stopped: false };
+      following = flag;
+      return task(() => flag.stopped).finally(() => { following = null; });
+    };
     const progress = (label) => { run.setLabel(label); };
-    done = deps.runSetup({ run, ask, print, progress, env: deps.env, platform: deps.platform });
+    const envToken = copilotAuthEnv(deps.env).envToken;
+    const notices = HIDDEN_TOKEN_VARS.indexOf(envToken) !== -1 ? [hiddenTokenLine(envToken)] : [];
+    done = deps.runSetup({ run, ask, print, progress, style, notices, env: deps.env, platform: deps.platform, activity, draw, drawColumns, whileFollowing });
   } catch (error) {
     if (ask !== null) ask.close();
     print(`✗ ${friendlyMessage(error)}`);
@@ -104,12 +129,6 @@ export function setupMain(deps) {
     })
     .then((code) => {
       ask.close();
-      if (code === 0) {
-        const envToken = copilotAuthEnv(deps.env).envToken;
-        if (HIDDEN_TOKEN_VARS.indexOf(envToken) !== -1) print(hiddenTokenLine(envToken));
-        finaleLines({ agent: AGENT, style, columns: output.columns || 80, random: deps.random })
-          .forEach((line) => { output.write(`${line}\n`); });
-      }
       return code;
     });
 }
